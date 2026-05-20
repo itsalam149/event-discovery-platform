@@ -6,9 +6,11 @@ import { mockApi } from '../services/mockApi';
 import { ShimmerLoader } from '../components/ShimmerLoader';
 import { User } from '../types';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const EventDetailScreen: React.FC = () => {
   const { navigation, goBack, toggleRsvp, currentUser } = useApp();
+  const insets = useSafeAreaInsets();
   const eventId = navigation.params?.eventId;
 
   const [eventDetail, setEventDetail] = useState<any | null>(null);
@@ -266,7 +268,10 @@ export const EventDetailScreen: React.FC = () => {
       <BlurView
         intensity={Platform.OS === 'ios' ? 25 : 90}
         tint="dark"
-        style={styles.stickyFooter}
+        style={[
+          styles.stickyFooter,
+          { paddingBottom: Math.max(insets.bottom, 16) }
+        ]}
       >
         <TouchableOpacity
           style={[
@@ -597,7 +602,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
     backgroundColor: Platform.OS === 'ios' ? 'rgba(15, 23, 42, 0.45)' : 'rgba(15, 23, 42, 0.85)',
   },
   footerBtn: {

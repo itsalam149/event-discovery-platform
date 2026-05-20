@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Platform, StatusBar as RNStatusBar, BackHandler } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { FeedScreen } from './src/screens/FeedScreen';
@@ -14,6 +14,7 @@ import { BlurView } from 'expo-blur';
 
 function MainLayout() {
   const { navigation, navigateTo, goBack, invites } = useApp();
+  const insets = useSafeAreaInsets();
   
   const pendingCount = invites.filter(i => i.status === 'pending').length;
 
@@ -108,7 +109,13 @@ function MainLayout() {
           <BlurView
             intensity={Platform.OS === 'ios' ? 25 : 90}
             tint="dark"
-            style={styles.tabBar}
+            style={[
+              styles.tabBar,
+              {
+                height: 56 + Math.max(insets.bottom, 8),
+                paddingBottom: Math.max(insets.bottom, 8),
+              }
+            ]}
           >
             <TouchableOpacity
               style={styles.tabItem}
@@ -206,10 +213,8 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    height: Platform.OS === 'ios' ? 76 : 64,
     borderTopWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
-    paddingBottom: Platform.OS === 'ios' ? 18 : 8,
     paddingTop: 10,
     backgroundColor: Platform.OS === 'ios' ? 'rgba(15, 23, 42, 0.45)' : 'rgba(15, 23, 42, 0.85)',
     position: 'absolute',
