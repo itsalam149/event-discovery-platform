@@ -2,6 +2,18 @@
 
 A premium, minimal event discovery mobile application built using **React Native + Expo + TypeScript**, featuring high-fidelity dark liquid-glass aesthetics, real-time RSVP capacity state transitions, waitlist queues, auto-promotions, and collaborative "Plan Together" invitations.
 
+## 📱 App Screenshots
+
+### Discovery & Search
+| Discovery Feed (All Events) | Category Filter (Music) | Text Search Filter |
+|:---:|:---:|:---:|
+| <img src="./screenshots/Screenshot_20260520-225821_Expo%20Go.png" width="280" alt="Discovery Feed" /> | <img src="./screenshots/Screenshot_20260520-225833_Expo%20Go.png" width="280" alt="Category Filter" /> | <img src="./screenshots/Screenshot_20260520-225901_Expo%20Go.png" width="280" alt="Text Search" /> |
+
+### Details & Collaboration
+| Event Details & RSVP | Inbox (Pending Invites) | Toast & Accepted State |
+|:---:|:---:|:---:|
+| <img src="./screenshots/Screenshot_20260520-225928_Expo%20Go.png" width="280" alt="Event Details" /> | <img src="./screenshots/Screenshot_20260520-225908_Expo%20Go.png" width="280" alt="Pending Invites" /> | <img src="./screenshots/Screenshot_20260520-225918_Expo%20Go.png" width="280" alt="Accepted Toast" /> |
+
 ---
 
 ## 🚀 Quick Start & Run Scripts
