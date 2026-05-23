@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { User, Event, ScreenName, RouteParams, NavigationState, PlanInvite } from '../types';
-import { mockApi, MOCK_USERS } from '../services/mockApi';
+import { User, Event, ScreenName, RouteParams, NavigationState, PlanInvite, Group, Chat, Message } from '../types';
+import { mockApi, MOCK_USERS, bannedUserIds } from '../services/mockApi';
 
 interface ToastState {
   message: string;
@@ -12,25 +12,50 @@ interface AppContextType {
   currentUser: User;
   allUsers: User[];
   switchUser: (userId: string) => Promise<void>;
-  
+
   // Navigation
   navigation: NavigationState;
   navigateTo: (screen: ScreenName, params?: RouteParams) => void;
   goBack: () => void;
-  
+
   // Event State
   events: any[];
   isLoadingEvents: boolean;
   fetchEventsList: () => Promise<void>;
   toggleRsvp: (eventId: string) => Promise<void>;
-  
+  createNewEvent: (eventData: Omit<Event, 'id' | 'hostId' | 'status'>) => Promise<boolean>;
+  editEventDetail: (eventId: string, updates: Partial<Event>) => Promise<boolean>;
+  cancelEvent: (eventId: string) => Promise<boolean>;
+  removeUserFromEvent: (eventId: string, targetUserId: string) => Promise<boolean>;
+  updateAttendeeRole: (eventId: string, targetUserId: string, newRole: 'ATTENDEE' | 'EVENT_MODERATOR' | 'EVENT_ADMIN') => Promise<boolean>;
+
+  // Group State
+  createNewGroup: (eventId: string, name: string) => Promise<boolean>;
+  joinGroup: (groupId: string) => Promise<boolean>;
+  leaveGroup: (groupId: string) => Promise<boolean>;
+  removeUserFromGroup: (groupId: string, targetUserId: string) => Promise<boolean>;
+  renameGroup: (groupId: string, name: string) => Promise<boolean>;
+
+  // Chat State
+  chats: any[];
+  isLoadingChats: boolean;
+  fetchChatsList: () => Promise<void>;
+  fetchChatMessages: (chatId: string) => Promise<any>;
+  postMessage: (chatId: string, text: string) => Promise<boolean>;
+  eraseMessage: (messageId: string) => Promise<boolean>;
+
+  // Admin State
+  banPlatformUser: (targetUserId: string) => Promise<boolean>;
+  unbanPlatformUser: (targetUserId: string) => Promise<boolean>;
+  isUserBanned: (userId: string) => boolean;
+
   // Invites State
   invites: any[];
   isLoadingInvites: boolean;
   fetchInvitesList: () => Promise<void>;
   respondToInvite: (inviteId: string, status: 'accepted' | 'rejected') => Promise<void>;
   sendInvites: (eventId: string, inviteeIds: string[]) => Promise<boolean>;
-  
+
   // Global Toast
   toast: ToastState | null;
   showToast: (message: string, type?: 'success' | 'info' | 'error' | 'waitlist') => void;
@@ -47,8 +72,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0]); // Alice default
   const [events, setEvents] = useState<any[]>([]);
   const [invites, setInvites] = useState<any[]>([]);
+  const [chats, setChats] = useState<any[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [isLoadingInvites, setIsLoadingInvites] = useState(false);
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [simulateError, setSimulateError] = useState(false);
 
@@ -110,8 +137,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const res = await mockApi.fetchEvents(currentUser.id);
       if (res.data) {
-        // Check for promotion toast feedback!
-        // If the current user was "waitlisted" previously and is now "going", show a celebration toast!
         const prevEvents = prevEventsRef.current;
         if (prevEvents.length > 0) {
           res.data.forEach(newEvent => {
@@ -150,17 +175,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUser.id, showToast]);
 
+  // Fetch chats list
+  const fetchChatsList = useCallback(async () => {
+    setIsLoadingChats(true);
+    try {
+      const res = await mockApi.fetchChats(currentUser.id);
+      if (res.data) {
+        setChats(res.data);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to fetch chats', 'error');
+    } finally {
+      setIsLoadingChats(false);
+    }
+  }, [currentUser.id, showToast]);
+
   // Switch Active User Profile
   const switchUser = useCallback(async (userId: string) => {
     const selectedUser = MOCK_USERS.find(u => u.id === userId);
     if (!selectedUser) return;
-    
+
     setCurrentUser(selectedUser);
     showToast(`Switched active profile to ${selectedUser.name}`, 'info');
-    
+
     // Clear page caches to force shimmers
     setEvents([]);
     setInvites([]);
+    setChats([]);
     // Nav back to Feed screen on user switch to reset flow context
     setNavigation({
       currentScreen: 'Feed',
@@ -172,7 +213,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     fetchEventsList();
     fetchInvitesList();
-  }, [currentUser.id, fetchEventsList, fetchInvitesList]);
+    fetchChatsList();
+  }, [currentUser.id, fetchEventsList, fetchInvitesList, fetchChatsList]);
 
   // RSVP / REVOKE RSVP with Optimistic UI updates
   const toggleRsvp = async (eventId: string) => {
@@ -182,7 +224,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const previousEvents = [...events];
     const isRsvped = event.rsvpStatus !== 'none';
     const oldStatus = event.rsvpStatus;
-    const oldWaitlistPos = event.waitlistPosition;
 
     // 1. OPTIMISTIC UPDATE
     setEvents(prevEvents =>
@@ -190,7 +231,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (e.id !== eventId) return e;
 
         if (isRsvped) {
-          // Cancelling RSVP
           const wasGoing = oldStatus === 'going';
           return {
             ...e,
@@ -200,7 +240,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             waitlistedCount: !wasGoing ? Math.max(0, e.waitlistedCount - 1) : e.waitlistedCount,
           };
         } else {
-          // Adding RSVP
           const willBeGoing = e.goingCount < e.capacity;
           return {
             ...e,
@@ -213,7 +252,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // Toast immediate feedback
     if (isRsvped) {
       showToast(`Cancelling RSVP for ${event.title}...`, 'info');
     } else {
@@ -231,10 +269,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const res = await mockApi.cancelRsvp(eventId, currentUser.id);
         if (res.error) throw new Error(res.error);
 
-        // Fetch official state to ensure waitlists update
         await fetchEventsList();
-        
-        // Show success and checks if someone was promoted
+        await fetchChatsList();
+
         if (res.data?.promotedUser) {
           showToast(`Cancelled! ${res.data.promotedUser.name} was auto-promoted to GOING!`, 'success');
         } else {
@@ -245,18 +282,236 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (res.error) throw new Error(res.error);
 
         await fetchEventsList();
+        await fetchChatsList();
 
         const actualReg = res.data?.registration;
-        if (actualReg?.status === 'going') {
+        if (actualReg?.status === 'JOINED') {
           showToast(`Confirmed! You are going to "${event.title}"!`, 'success');
-        } else if (actualReg?.status === 'waitlisted') {
+        } else if (actualReg?.status === 'WAITLISTED') {
           showToast(`You are on the Waitlist! Position #${actualReg.waitlistPosition}`, 'waitlist');
         }
       }
     } catch (err: any) {
-      // Rollback on error
       setEvents(previousEvents);
       showToast(err.message || 'Failed to update RSVP. Please try again.', 'error');
+    }
+  };
+
+  // Event Moderation Services
+  const createNewEvent = async (eventData: Omit<Event, 'id' | 'hostId' | 'status'>) => {
+    try {
+      showToast('Creating event...', 'info');
+      const res = await mockApi.createEvent(currentUser.id, eventData);
+      if (res.error) throw new Error(res.error);
+      showToast(`Event "${res.data?.title}" created successfully!`, 'success');
+      await fetchEventsList();
+      await fetchChatsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create event', 'error');
+      return false;
+    }
+  };
+
+  const editEventDetail = async (eventId: string, updates: Partial<Event>) => {
+    try {
+      showToast('Updating event details...', 'info');
+      const res = await mockApi.editEvent(currentUser.id, eventId, updates);
+      if (res.error) throw new Error(res.error);
+      showToast('Event updated successfully.', 'success');
+      await fetchEventsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to edit event', 'error');
+      return false;
+    }
+  };
+
+  const cancelEvent = async (eventId: string) => {
+    try {
+      showToast('Cancelling event...', 'info');
+      const res = await mockApi.cancelEvent(currentUser.id, eventId);
+      if (res.error) throw new Error(res.error);
+      showToast('Event cancelled successfully.', 'success');
+      await fetchEventsList();
+      await fetchChatsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to cancel event', 'error');
+      return false;
+    }
+  };
+
+  const removeUserFromEvent = async (eventId: string, targetUserId: string) => {
+    try {
+      showToast('Removing attendee...', 'info');
+      const res = await mockApi.removeAttendee(currentUser.id, eventId, targetUserId);
+      if (res.error) throw new Error(res.error);
+      showToast('Attendee removed from event.', 'success');
+      await fetchEventsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove attendee', 'error');
+      return false;
+    }
+  };
+
+  const updateAttendeeRole = async (eventId: string, targetUserId: string, newRole: 'ATTENDEE' | 'EVENT_MODERATOR' | 'EVENT_ADMIN') => {
+    try {
+      showToast('Updating role...', 'info');
+      const res = await mockApi.updateAttendeeRole(currentUser.id, eventId, targetUserId, newRole);
+      if (res.error) throw new Error(res.error);
+      showToast(`User role updated to ${newRole}.`, 'success');
+      await fetchEventsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update role', 'error');
+      return false;
+    }
+  };
+
+  // Group Services
+  const createNewGroup = async (eventId: string, name: string) => {
+    try {
+      showToast('Creating group...', 'info');
+      const res = await mockApi.createGroup(currentUser.id, eventId, name);
+      if (res.error) throw new Error(res.error);
+      showToast(`Group "${res.data?.name}" created successfully!`, 'success');
+      await fetchEventsList();
+      await fetchChatsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create group', 'error');
+      return false;
+    }
+  };
+
+  const joinGroup = async (groupId: string) => {
+    try {
+      showToast('Joining group...', 'info');
+      const res = await mockApi.joinGroup(currentUser.id, groupId);
+      if (res.error) throw new Error(res.error);
+      showToast(`Joined group successfully!`, 'success');
+      await fetchEventsList();
+      await fetchChatsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to join group', 'error');
+      return false;
+    }
+  };
+
+  const leaveGroup = async (groupId: string) => {
+    try {
+      showToast('Leaving group...', 'info');
+      const res = await mockApi.leaveGroup(currentUser.id, groupId);
+      if (res.error) throw new Error(res.error);
+      showToast(`Left group.`, 'success');
+      await fetchEventsList();
+      await fetchChatsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to leave group', 'error');
+      return false;
+    }
+  };
+
+  const removeUserFromGroup = async (groupId: string, targetUserId: string) => {
+    try {
+      showToast('Removing member from group...', 'info');
+      const res = await mockApi.removeGroupMember(currentUser.id, groupId, targetUserId);
+      if (res.error) throw new Error(res.error);
+      showToast('Member removed.', 'success');
+      await fetchEventsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove member', 'error');
+      return false;
+    }
+  };
+
+  const renameGroup = async (groupId: string, name: string) => {
+    try {
+      showToast('Renaming group...', 'info');
+      const res = await mockApi.renameGroup(currentUser.id, groupId, name);
+      if (res.error) throw new Error(res.error);
+      showToast('Group renamed.', 'success');
+      await fetchEventsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to rename group', 'error');
+      return false;
+    }
+  };
+
+  // Platform Admin Hooks
+  const banPlatformUser = async (targetUserId: string) => {
+    try {
+      showToast('Banning user platform-wide...', 'info');
+      const res = await mockApi.banUser(currentUser.id, targetUserId);
+      if (res.error) throw new Error(res.error);
+      showToast('User has been banned and scrubbed from all contexts.', 'success');
+      await fetchEventsList();
+      await fetchChatsList();
+      await fetchInvitesList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to ban user', 'error');
+      return false;
+    }
+  };
+
+  const unbanPlatformUser = async (targetUserId: string) => {
+    try {
+      showToast('Unbanning user...', 'info');
+      const res = await mockApi.unbanUser(currentUser.id, targetUserId);
+      if (res.error) throw new Error(res.error);
+      showToast('User unbanned.', 'success');
+      await fetchEventsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to unban user', 'error');
+      return false;
+    }
+  };
+
+  const isUserBanned = (userId: string) => {
+    return require('../services/mockApi').isUserBanned(userId);
+  };
+
+  // Chat/Messaging Services
+  const fetchChatMessages = async (chatId: string) => {
+    try {
+      const res = await mockApi.fetchMessages(chatId, currentUser.id);
+      if (res.error) throw new Error(res.error);
+      return res.data;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to load messages', 'error');
+      return null;
+    }
+  };
+
+  const postMessage = async (chatId: string, text: string) => {
+    try {
+      const res = await mockApi.sendMessage(chatId, currentUser.id, text);
+      if (res.error) throw new Error(res.error);
+      await fetchChatsList();
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to send message', 'error');
+      return false;
+    }
+  };
+
+  const eraseMessage = async (messageId: string) => {
+    try {
+      const res = await mockApi.deleteMessage(currentUser.id, messageId);
+      if (res.error) throw new Error(res.error);
+      showToast('Message deleted.', 'success');
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete message', 'error');
+      return false;
     }
   };
 
@@ -264,7 +519,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const respondToInvite = async (inviteId: string, status: 'accepted' | 'rejected') => {
     const previousInvites = [...invites];
 
-    // Optimistic UI updates
     setInvites(prev =>
       prev.map(i => (i.id === inviteId ? { ...i, status } : i))
     );
@@ -274,7 +528,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const res = await mockApi.respondToInvite(inviteId, status);
       if (res.error) throw new Error(res.error);
-      
+
       showToast(status === 'accepted' ? 'Invitation accepted! Planning started.' : 'Invitation declined.', 'success');
       await fetchInvitesList();
     } catch (err: any) {
@@ -286,13 +540,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Send "Plan together" invites
   const sendInvites = async (eventId: string, inviteeIds: string[]): Promise<boolean> => {
     if (inviteeIds.length === 0) return false;
-    
+
     showToast(`Sending plan invitations to ${inviteeIds.length} attendee(s)...`, 'info');
-    
+
     try {
       const res = await mockApi.sendPlanInvites(eventId, currentUser.id, inviteeIds);
       if (res.error) throw new Error(res.error);
-      
+
       showToast(`Success! Invites sent to start planning.`, 'success');
       return true;
     } catch (err: any) {
@@ -314,6 +568,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isLoadingEvents,
         fetchEventsList,
         toggleRsvp,
+        createNewEvent,
+        editEventDetail,
+        cancelEvent,
+        removeUserFromEvent,
+        updateAttendeeRole,
+        createNewGroup,
+        joinGroup,
+        leaveGroup,
+        removeUserFromGroup,
+        renameGroup,
+        chats,
+        isLoadingChats,
+        fetchChatsList,
+        fetchChatMessages,
+        postMessage,
+        eraseMessage,
+        banPlatformUser,
+        unbanPlatformUser,
+        isUserBanned,
         invites,
         isLoadingInvites,
         fetchInvitesList,

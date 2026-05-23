@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface EventCardProps {
   event: {
@@ -54,19 +55,19 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
         {/* Status badges */}
         {isGoing && (
           <View style={[styles.statusBadge, styles.goingBadge]}>
-            <Ionicons name="checkmark-circle" size={14} color="#FFFFFF" style={styles.badgeIcon} />
-            <Text style={styles.statusText}>Going</Text>
+            <Ionicons name="checkmark-circle" size={14} color="#34D399" style={styles.badgeIcon} />
+            <Text style={[styles.statusText, { color: '#34D399' }]}>Going</Text>
           </View>
         )}
         {isWaitlisted && (
           <View style={[styles.statusBadge, styles.waitlistBadge]}>
-            <Ionicons name="time" size={14} color="#FFFFFF" style={styles.badgeIcon} />
-            <Text style={styles.statusText}>Waitlist #{event.waitlistPosition}</Text>
+            <Ionicons name="time" size={14} color="#FBBF24" style={styles.badgeIcon} />
+            <Text style={[styles.statusText, { color: '#FBBF24' }]}>Waitlist #{event.waitlistPosition}</Text>
           </View>
         )}
         {!isRegistered && isFull && (
           <View style={[styles.statusBadge, styles.fullBadge]}>
-            <Text style={styles.statusText}>Full</Text>
+            <Text style={[styles.statusText, { color: '#94A3B8' }]}>Full</Text>
           </View>
         )}
       </View>
@@ -101,15 +102,19 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
             </Text>
           </View>
           <View style={styles.progressBarBg}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${fillPercentage * 100}%`,
-                  backgroundColor: isFull ? '#EF4444' : '#6366F1',
-                },
-              ]}
-            />
+            {fillPercentage > 0 ? (
+              <LinearGradient
+                colors={isFull ? ['#EF4444', '#F43F5E'] : ['#6366F1', '#818CF8']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${fillPercentage * 100}%`,
+                  },
+                ]}
+              />
+            ) : null}
           </View>
         </View>
 
@@ -157,7 +162,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: 'rgba(30, 41, 59, 0.45)',
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
     marginBottom: 20,
     borderWidth: 1,
@@ -210,16 +215,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   goingBadge: {
-    backgroundColor: '#10B981',
-    borderColor: '#059669',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.35)',
   },
   waitlistBadge: {
-    backgroundColor: '#F59E0B',
-    borderColor: '#D97706',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
   },
   fullBadge: {
-    backgroundColor: '#64748B',
-    borderColor: '#475569',
+    backgroundColor: 'rgba(100, 116, 139, 0.15)',
+    borderColor: 'rgba(100, 116, 139, 0.35)',
   },
   badgeIcon: {
     marginRight: 4,
@@ -269,7 +274,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   progressBarBg: {
-    height: 6,
+    height: 5,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 3,
     overflow: 'hidden',
@@ -283,18 +288,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   confirmButton: {
-    backgroundColor: '#6366F1',
+    backgroundColor: '#818CF8',
   },
   waitlistBtn: {
     backgroundColor: '#D97706',
   },
   cancelButton: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderWidth: 1,
-    borderColor: '#EF4444',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   rsvpButtonText: {
     color: '#FFFFFF',

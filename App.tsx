@@ -61,13 +61,13 @@ function MainLayout() {
 
   return (
     <View style={styles.appContainer}>
-      <StatusBar style="light" backgroundColor="transparent" translucent />
+      <StatusBar style="light" />
       
       {/* Liquid-Glass Background Blobs */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <LinearGradient
           colors={['#090D1A', '#0B0F19', '#111827']}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         
         {/* Glowing Neon Blob 1 (Top Left - Purple/Indigo) */}
@@ -183,9 +183,11 @@ export default function App() {
 const styles = StyleSheet.create({
   appContainer: {
     flex: 1,
+    backgroundColor: '#090D1A',
   },
   safeArea: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   content: {
     flex: 1,

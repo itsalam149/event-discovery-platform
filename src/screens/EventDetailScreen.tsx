@@ -1,21 +1,47 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, Image, ScrollView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, Text, View, Image, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput, Modal, Alert, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { mockApi } from '../services/mockApi';
+import { LinearGradient } from 'expo-linear-gradient';
+import { mockApi, MOCK_USERS } from '../services/mockApi';
 import { ShimmerLoader } from '../components/ShimmerLoader';
-import { User } from '../types';
+import { User, Group } from '../types';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const EventDetailScreen: React.FC = () => {
-  const { navigation, goBack, toggleRsvp, currentUser } = useApp();
+  const { 
+    navigation, 
+    goBack, 
+    toggleRsvp, 
+    currentUser, 
+    editEventDetail, 
+    cancelEvent,
+    createNewGroup,
+    joinGroup,
+    leaveGroup,
+    navigateTo
+  } = useApp();
+  
   const insets = useSafeAreaInsets();
   const eventId = navigation.params?.eventId;
 
   const [eventDetail, setEventDetail] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRsvping, setIsRsvping] = useState(false);
+
+  // Edit Event State
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editCapacity, setEditCapacity] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Group State
+  const [createGroupModalVisible, setCreateGroupModalVisible] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [isJoiningGroup, setIsJoiningGroup] = useState<string | null>(null);
 
   const fetchDetail = async () => {
     if (!eventId) return;
@@ -24,6 +50,9 @@ export const EventDetailScreen: React.FC = () => {
       const res = await mockApi.fetchEvent(eventId, currentUser.id);
       if (res.data) {
         setEventDetail(res.data);
+        setEditTitle(res.data.title);
+        setEditDesc(res.data.description);
+        setEditCapacity(res.data.capacity.toString());
       }
     } catch (err) {
       console.error(err);
@@ -41,10 +70,106 @@ export const EventDetailScreen: React.FC = () => {
     setIsRsvping(true);
     try {
       await toggleRsvp(eventDetail.id);
-      // Re-fetch detail to refresh the attendee list and official counters
       await fetchDetail();
     } finally {
       setIsRsvping(false);
+    }
+  };
+
+  const handleEditSubmit = async () => {
+    if (!eventDetail || !editTitle.trim() || !editDesc.trim() || !editCapacity.trim()) {
+      Alert.alert('Error', 'Please fill in all fields.');
+      return;
+    }
+    const capNum = parseInt(editCapacity, 10);
+    if (isNaN(capNum) || capNum <= 0) {
+      Alert.alert('Error', 'Capacity must be a positive number.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const success = await editEventDetail(eventDetail.id, {
+        title: editTitle,
+        description: editDesc,
+        capacity: capNum
+      });
+      if (success) {
+        setEditModalVisible(false);
+        await fetchDetail();
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEvent = () => {
+    if (!eventDetail) return;
+    Alert.alert(
+      'Cancel Event',
+      'Are you sure you want to cancel this event? This will freeze RSVPs, disband all groups, and make chats read-only.',
+      [
+        { text: 'No', style: 'cancel' },
+        { 
+          text: 'Yes, Cancel', 
+          style: 'destructive',
+          onPress: async () => {
+            const success = await cancelEvent(eventDetail.id);
+            if (success) {
+              await fetchDetail();
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim() || !eventDetail) {
+      Alert.alert('Error', 'Please enter a group name.');
+      return;
+    }
+
+    setIsCreatingGroup(true);
+    try {
+      const success = await createNewGroup(eventDetail.id, newGroupName.trim());
+      if (success) {
+        setCreateGroupModalVisible(false);
+        setNewGroupName('');
+        await fetchDetail();
+      }
+    } finally {
+      setIsCreatingGroup(false);
+    }
+  };
+
+  const handleGroupAction = async (group: Group, inGroup: boolean) => {
+    setIsJoiningGroup(group.id);
+    try {
+      if (inGroup) {
+        // Leave Group
+        Alert.alert(
+          'Leave Group',
+          'Are you sure you want to leave this group?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Leave', 
+              style: 'destructive',
+              onPress: async () => {
+                const success = await leaveGroup(group.id);
+                if (success) await fetchDetail();
+              }
+            }
+          ]
+        );
+      } else {
+        // Join Group
+        const success = await joinGroup(group.id);
+        if (success) await fetchDetail();
+      }
+    } finally {
+      setIsJoiningGroup(null);
     }
   };
 
@@ -59,12 +184,12 @@ export const EventDetailScreen: React.FC = () => {
           <View style={{ width: 40 }} />
         </View>
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-          <ShimmerLoader style={styles.imageSkeleton} />
+          <ShimmerLoader style={styles.imageSkeleton as any} />
           <View style={styles.paddingContainer}>
-            <ShimmerLoader style={styles.titleSkeleton} />
-            <ShimmerLoader style={styles.metaSkeleton} />
-            <ShimmerLoader style={styles.metaSkeleton} />
-            <ShimmerLoader style={styles.descSkeleton} />
+            <ShimmerLoader style={styles.titleSkeleton as any} />
+            <ShimmerLoader style={styles.metaSkeleton as any} />
+            <ShimmerLoader style={styles.metaSkeleton as any} />
+            <ShimmerLoader style={styles.descSkeleton as any} />
           </View>
         </ScrollView>
       </View>
@@ -75,11 +200,18 @@ export const EventDetailScreen: React.FC = () => {
   const isGoing = eventDetail.rsvpStatus === 'going';
   const isWaitlisted = eventDetail.rsvpStatus === 'waitlisted';
   const isRegistered = isGoing || isWaitlisted;
+  const isCancelled = eventDetail.status === 'CANCELLED';
 
   const fillPercentage = Math.min(1, eventDetail.goingCount / eventDetail.capacity);
 
-  // Find host details
-  const host = mockApi.fetchEvents !== undefined ? require('../services/mockApi').MOCK_USERS.find((u: User) => u.id === eventDetail.hostId) : null;
+  // Host Details
+  const host = MOCK_USERS.find((u: User) => u.id === eventDetail.hostId);
+
+  // Checks context permissions
+  const isEventAdmin = eventDetail.userRole === 'EVENT_ADMIN';
+  const isPlatformAdmin = currentUser.globalRole === 'PLATFORM_ADMIN';
+  const isSupportAdmin = currentUser.globalRole === 'SUPPORT_ADMIN';
+  const hasEventAdminPrivileges = isEventAdmin || isPlatformAdmin || isSupportAdmin;
 
   return (
     <View style={styles.container}>
@@ -98,9 +230,9 @@ export const EventDetailScreen: React.FC = () => {
         {/* Banner Image */}
         <View style={styles.imageContainer}>
           {eventDetail.imageUrl ? (
-            <Image source={{ uri: eventDetail.imageUrl }} style={styles.bannerImage} />
+            <Image source={{ uri: eventDetail.imageUrl }} style={styles.bannerImage as any} />
           ) : (
-            <View style={[styles.bannerImage, styles.fallbackImage]}>
+            <View style={[styles.bannerImage as any, styles.fallbackImage]}>
               <Ionicons name="image-outline" size={60} color="#475569" />
             </View>
           )}
@@ -110,8 +242,18 @@ export const EventDetailScreen: React.FC = () => {
         </View>
 
         <View style={styles.paddingContainer}>
+          {/* Cancelled Banner */}
+          {isCancelled && (
+            <View style={[styles.statusBanner, styles.cancelledBanner]}>
+              <Ionicons name="alert-circle" size={20} color="#FFFFFF" style={styles.bannerIcon} />
+              <Text style={styles.statusBannerText}>
+                🚨 This event has been CANCELLED.
+              </Text>
+            </View>
+          )}
+
           {/* Status Indicators */}
-          {isRegistered && (
+          {!isCancelled && isRegistered && (
             <View
               style={[
                 styles.statusBanner,
@@ -132,15 +274,50 @@ export const EventDetailScreen: React.FC = () => {
             </View>
           )}
 
+          {/* Admin Controls Panel */}
+          {!isCancelled && hasEventAdminPrivileges && (
+            <BlurView intensity={20} tint="dark" style={styles.adminCard}>
+              <View style={styles.adminHeader}>
+                <Ionicons name="shield-half-outline" size={18} color="#818CF8" />
+                <Text style={styles.adminTitle}>
+                  {isPlatformAdmin ? 'Platform Admin Panel' : isSupportAdmin ? 'Support Panel' : 'Event Host Panel'}
+                </Text>
+              </View>
+              <View style={styles.adminActions}>
+                <TouchableOpacity
+                  style={[styles.adminBtn, styles.adminEditBtn]}
+                  onPress={() => setEditModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.adminBtnText}>Edit Details</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adminBtn, styles.adminCancelBtn]}
+                  onPress={handleCancelEvent}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.adminBtnText}>Cancel Event</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          )}
+
           {/* Title & Host info */}
           <Text style={styles.title}>{eventDetail.title}</Text>
 
           {host && (
             <View style={styles.hostRow}>
-              <Image source={{ uri: host.avatarUrl }} style={styles.hostAvatar} />
+              <Image source={{ uri: host.avatarUrl }} style={styles.hostAvatar as any} />
               <View>
                 <Text style={styles.hostLabel}>Hosted By</Text>
-                <Text style={styles.hostName}>{host.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.hostName}>{host.name}</Text>
+                  <View style={styles.hostBadge}>
+                    <Text style={styles.hostBadgeText}>HOST</Text>
+                  </View>
+                </View>
               </View>
             </View>
           )}
@@ -190,15 +367,19 @@ export const EventDetailScreen: React.FC = () => {
               </Text>
             </View>
             <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressBar,
-                  {
-                    width: `${fillPercentage * 100}%`,
-                    backgroundColor: isFull ? '#EF4444' : '#6366F1',
-                  },
-                ]}
-              />
+              {fillPercentage > 0 ? (
+                <LinearGradient
+                  colors={isFull ? ['#EF4444', '#F43F5E'] : ['#6366F1', '#818CF8']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[
+                    styles.progressBar,
+                    {
+                      width: `${fillPercentage * 100}%`,
+                    },
+                  ]}
+                />
+              ) : null}
             </View>
             <Text style={styles.capacitySubtitle}>
               {isFull
@@ -223,12 +404,10 @@ export const EventDetailScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Attendees ({eventDetail.goingCount})</Text>
               {eventDetail.goingCount > 0 && (
                 <TouchableOpacity
-                  onPress={() =>
-                    require('../context/AppContext').useApp().navigateTo('AttendeeList', { eventId: eventDetail.id })
-                  }
+                  onPress={() => navigateTo('AttendeeList', { eventId: eventDetail.id })}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.viewAllText}>View Attendee List</Text>
+                  <Text style={styles.viewAllText}>Manage Attendees</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -241,11 +420,11 @@ export const EventDetailScreen: React.FC = () => {
             ) : (
               <View style={styles.attendeeBubblesRow}>
                 <View style={styles.avatarOverlapContainer}>
-                  {eventDetail.attendees.slice(0, 5).map((attendee: User, idx: number) => (
+                  {eventDetail.attendees.slice(0, 5).map((attendee: any, idx: number) => (
                     <Image
                       key={attendee.id}
                       source={{ uri: attendee.avatarUrl }}
-                      style={[styles.overlapAvatar, { left: idx * 24 }]}
+                      style={[styles.overlapAvatar as any, { left: idx * 24 }]}
                     />
                   ))}
                   {eventDetail.goingCount > 5 && (
@@ -254,10 +433,87 @@ export const EventDetailScreen: React.FC = () => {
                     </View>
                   )}
                 </View>
-                <Text style={styles.attendeesSnippetText}>
-                  {eventDetail.attendees.slice(0, 2).map((a: User) => a.name.split(' ')[0]).join(', ')}
+                <Text style={styles.attendeesSnippetText} numberOfLines={1}>
+                  {eventDetail.attendees.slice(0, 2).map((a: any) => a.name.split(' ')[0]).join(', ')}
                   {eventDetail.goingCount > 2 ? ` and ${eventDetail.goingCount - 2} others` : ' going'}
                 </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Event Groups Section */}
+          <View style={styles.groupsSection}>
+            <View style={styles.groupsHeader}>
+              <Text style={styles.sectionTitle}>Event Planning Groups</Text>
+              {!isCancelled && isGoing && (
+                <TouchableOpacity
+                  style={styles.createGroupBtn}
+                  onPress={() => setCreateGroupModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add" size={16} color="#818CF8" />
+                  <Text style={styles.createGroupBtnText}>New Group</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {!isGoing ? (
+              <View style={styles.groupAlertBox}>
+                <Ionicons name="lock-closed-outline" size={20} color="#64748B" />
+                <Text style={styles.groupAlertText}>
+                  Only confirmed event attendees can view and join planning groups.
+                </Text>
+              </View>
+            ) : eventDetail.groups?.length === 0 ? (
+              <View style={styles.emptyGroupsBox}>
+                <Ionicons name="chatbubbles-outline" size={24} color="#475569" />
+                <Text style={styles.emptyGroupsText}>No planning groups have been formed yet.</Text>
+              </View>
+            ) : (
+              <View style={styles.groupsList}>
+                {eventDetail.groups.map((group: Group) => {
+                  const groupMembersList = require('../services/mockApi').group_members;
+                  const inGroup = groupMembersList.some((gm: any) => gm.groupId === group.id && gm.userId === currentUser.id && gm.status === 'JOINED');
+
+                  return (
+                    <View key={group.id} style={styles.groupRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.groupNameText}>{group.name}</Text>
+                        <Text style={styles.groupStatusText}>Status: {group.status}</Text>
+                      </View>
+                      
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={[styles.groupActionBtn, inGroup ? styles.leaveGroupActionBtn : styles.joinGroupActionBtn]}
+                          disabled={isJoiningGroup === group.id}
+                          onPress={() => handleGroupAction(group, inGroup)}
+                          activeOpacity={0.7}
+                        >
+                          {isJoiningGroup === group.id ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.groupActionBtnText}>
+                              {inGroup ? 'Leave' : 'Join'}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+
+                        {inGroup && (
+                          <TouchableOpacity
+                            style={[styles.groupActionBtn, styles.chatGroupActionBtn]}
+                            onPress={() => navigateTo('Inbox')}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="chatbubble-ellipses" size={14} color="#FFFFFF" />
+                            <Text style={styles.groupActionBtnText}>Chat</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             )}
           </View>
@@ -276,10 +532,16 @@ export const EventDetailScreen: React.FC = () => {
         <TouchableOpacity
           style={[
             styles.footerBtn,
-            isRegistered ? styles.footerBtnCancel : isFull ? styles.footerBtnWaitlist : styles.footerBtnConfirm,
+            isCancelled 
+              ? styles.footerBtnCancelled 
+              : isRegistered 
+                ? styles.footerBtnCancel 
+                : isFull 
+                  ? styles.footerBtnWaitlist 
+                  : styles.footerBtnConfirm,
           ]}
           onPress={handleRsvpToggle}
-          disabled={isRsvping}
+          disabled={isRsvping || isCancelled}
           activeOpacity={0.8}
         >
           {isRsvping ? (
@@ -287,21 +549,25 @@ export const EventDetailScreen: React.FC = () => {
           ) : (
             <>
               <Text style={styles.footerBtnText}>
-                {isGoing
-                  ? 'Cancel RSVP'
-                  : isWaitlisted
-                  ? 'Leave Waitlist'
-                  : isFull
-                  ? 'Join Waitlist'
-                  : 'RSVP for Event'}
+                {isCancelled
+                  ? 'Event Cancelled'
+                  : isGoing
+                    ? 'Cancel RSVP'
+                    : isWaitlisted
+                      ? 'Leave Waitlist'
+                      : isFull
+                        ? 'Join Waitlist'
+                        : 'RSVP for Event'}
               </Text>
               <Ionicons
                 name={
-                  isRegistered
-                    ? 'close-circle'
-                    : isFull
-                    ? 'time-outline'
-                    : 'arrow-forward'
+                  isCancelled
+                    ? 'alert-circle'
+                    : isRegistered
+                      ? 'close-circle'
+                      : isFull
+                        ? 'time-outline'
+                        : 'arrow-forward'
                 }
                 size={18}
                 color="#FFFFFF"
@@ -311,6 +577,122 @@ export const EventDetailScreen: React.FC = () => {
           )}
         </TouchableOpacity>
       </BlurView>
+
+      {/* Edit Details Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={editModalVisible}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setEditModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Event Details</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Title</Text>
+              <TextInput
+                style={styles.textInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Event Title"
+                placeholderTextColor="#64748B"
+              />
+            </View>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Description</Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                value={editDesc}
+                onChangeText={setEditDesc}
+                placeholder="Event Description"
+                placeholderTextColor="#64748B"
+                multiline={true}
+                numberOfLines={4}
+              />
+            </View>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Capacity</Text>
+              <TextInput
+                style={styles.textInput}
+                value={editCapacity}
+                onChangeText={setEditCapacity}
+                placeholder="Capacity"
+                placeholderTextColor="#64748B"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelModalBtn]}
+                onPress={() => setEditModalVisible(false)}
+                disabled={isSaving}
+              >
+                <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.submitModalBtn]}
+                onPress={handleEditSubmit}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalBtnTextSubmit}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Create Group Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={createGroupModalVisible}
+        onRequestClose={() => setCreateGroupModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setCreateGroupModalVisible(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Create Planning Group</Text>
+            <Text style={styles.modalSubtitle}>
+              Organize attendees, plan rides, or schedule activities. Creating a group sets you as the Group & Chat Admin.
+            </Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Group Name</Text>
+              <TextInput
+                style={styles.textInput}
+                value={newGroupName}
+                onChangeText={setNewGroupName}
+                placeholder="e.g. Carpoolers, Afternoon Coffee"
+                placeholderTextColor="#64748B"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelModalBtn]}
+                onPress={() => setCreateGroupModalVisible(false)}
+                disabled={isCreatingGroup}
+              >
+                <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.submitModalBtn]}
+                onPress={handleCreateGroup}
+                disabled={isCreatingGroup}
+              >
+                {isCreatingGroup ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalBtnTextSubmit}>Create Group</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -347,7 +729,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 110, // leave space for absolute glass sticky footer
+    paddingBottom: 110,
   },
   imageContainer: {
     height: 220,
@@ -395,6 +777,9 @@ const styles = StyleSheet.create({
   waitlistBanner: {
     backgroundColor: '#F59E0B',
   },
+  cancelledBanner: {
+    backgroundColor: '#EF4444',
+  },
   bannerIcon: {
     marginRight: 10,
   },
@@ -402,6 +787,50 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+  },
+  adminCard: {
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.25)',
+    padding: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  adminHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  adminTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#818CF8',
+  },
+  adminActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  adminBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 38,
+    borderRadius: 10,
+  },
+  adminEditBtn: {
+    backgroundColor: '#6366F1',
+  },
+  adminCancelBtn: {
+    backgroundColor: '#EF4444',
+  },
+  adminBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   title: {
     fontSize: 22,
@@ -430,6 +859,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#E2E8F0',
     fontWeight: '700',
+  },
+  hostBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  hostBadgeText: {
+    fontSize: 7.5,
+    fontWeight: '900',
+    color: '#34D399',
   },
   divider: {
     height: 1,
@@ -594,6 +1036,103 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  groupsSection: {
+    gap: 12,
+  },
+  groupsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  createGroupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  createGroupBtnText: {
+    color: '#818CF8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  groupAlertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(30, 41, 59, 0.3)',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  groupAlertText: {
+    color: '#64748B',
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 16,
+  },
+  emptyGroupsBox: {
+    backgroundColor: 'rgba(30, 41, 59, 0.4)',
+    borderRadius: 12,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  emptyGroupsText: {
+    color: '#64748B',
+    fontSize: 12,
+  },
+  groupsList: {
+    gap: 10,
+  },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(30, 41, 59, 0.45)',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  groupNameText: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  groupStatusText: {
+    color: '#64748B',
+    fontSize: 11,
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  groupActionBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  joinGroupActionBtn: {
+    backgroundColor: '#334155',
+  },
+  leaveGroupActionBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  chatGroupActionBtn: {
+    backgroundColor: '#6366F1',
+  },
+  groupActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   stickyFooter: {
     position: 'absolute',
     bottom: 0,
@@ -621,6 +1160,9 @@ const styles = StyleSheet.create({
   footerBtnCancel: {
     backgroundColor: '#EF4444',
   },
+  footerBtnCancelled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
   footerBtnText: {
     color: '#FFFFFF',
     fontWeight: '800',
@@ -629,8 +1171,6 @@ const styles = StyleSheet.create({
   footerBtnIcon: {
     marginLeft: 8,
   },
-
-  // Skeleton Styles
   imageSkeleton: {
     height: 220,
     width: '100%',
@@ -652,5 +1192,86 @@ const styles = StyleSheet.create({
     height: 80,
     width: '100%',
     backgroundColor: 'rgba(30, 41, 59, 0.45)',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#0F172A',
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 24,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#F8FAFC',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 16,
+    marginTop: -8,
+  },
+  inputContainer: {
+    gap: 6,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  textInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 16,
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  textArea: {
+    height: 100,
+    paddingTop: 12,
+    textAlignVertical: 'top',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelModalBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  submitModalBtn: {
+    backgroundColor: '#818CF8',
+  },
+  modalBtnTextCancel: {
+    color: '#94A3B8',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  modalBtnTextSubmit: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
   },
 });

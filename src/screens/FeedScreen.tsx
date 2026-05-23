@@ -26,7 +26,7 @@ export const FeedScreen: React.FC = () => {
       const matchesSearch =
         event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         event.location.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesCategory =
         selectedCategory === 'All' || event.category === selectedCategory;
 
@@ -181,11 +181,11 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.45)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     marginHorizontal: 20,
     paddingHorizontal: 14,
     height: 48,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     marginBottom: 14,
@@ -207,13 +207,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   categoryBtn: {
-    backgroundColor: 'rgba(30, 41, 59, 0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   categoryBtnSelected: {
     backgroundColor: '#818CF8',
